@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Hello World -JavaScript </title>
+</head>
+
+<body>
+
+  <div style="width: 1210px">
+    <div style="float: left;">
+      <div id="my-container" style="width:800px; height:600px;"></div>
+      <div style="float: left; margin-top: 5px;">
+        <div style="margin-left: 0">
+          <br />
+        </div>
+        <br />
+      </div>
+
+    </div>
+    <div style="margin-left: 810px;">
+      <div id="text-container"
+        style="box-sizing: border-box; width: 400px; height: 600px; border: 1px solid black; padding: 5px;"></div>
+    </div>
+  </div>
+  <script src='./../node_modules/fm.liveswitch/fm.liveswitch.js'></script>
+  <script type="text/javascript" src='../MediaStreamingLogic.js'></script>
+  <script>
+    var app = HelloWorld.MediaStreamingLogic.getInstance();
+
+    window.onload = () => {
+      app.checkAppCredentialsSet();
+      app.startLocalMedia().then(() => {
+        // Create and register the client.
+        app.joinAsync();
+
+      });
+
+    };
+  </script>
+
+</body>
+
+</html>

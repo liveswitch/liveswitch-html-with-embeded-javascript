@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Share Screen</title>
+</head>
+
+<body>
+  <div>
+    <div style="float: left;">
+      <div style="float: left; margin-top: 5px;">
+        <div style="margin-left: 0">
+          <button type="button" id="join-btn" style="margin: 2px;">Join</button>
+          <button type="button" id="leave-btn" style="margin: 2px; display: none;">Leave</button>
+          <br />
+          <button type="button" id="screenshare-toggle-btn" style="margin: 2px;">Toggle ScreenShare</button>
+        </div>
+        <br />
+        <div id="my-container" style="width:800px; height:600px;"></div>
+      </div>
+
+    </div>
+    <div style="margin-left: 810px;">
+      <div id="text-container"
+        style="box-sizing: border-box; width: 400px; height: 600px; border: 1px solid black; padding: 5px;"></div>
+    </div>
+  </div>
+  <script src='./../node_modules/fm.liveswitch/fm.liveswitch.js'></script>
+  <script type="text/javascript" src='../MediaStreamingLogic.js'></script>
+  <script>
+    var app = HelloWorld.MediaStreamingLogic.getInstance();
+
+    // Create a new local media for screen capturing.
+    app.localScreenMedia = new fm.liveswitch.LocalMedia(false, true, true);
+
+    app.screenSharingUpstreamConnection = undefined;
+
+    app.toggleScreenSharing = function () {
+      if (
+        this.localScreenMedia.getState() === fm.liveswitch.LocalMediaState.New ||
+        this.localScreenMedia.getState() === fm.liveswitch.LocalMediaState.Stopped
+      ) {
+        this.startScreenSharing();
+      } else {
+        this.stopScreenSharing();
+      }
+    }
+
+    app.startScreenSharing = function () {
+      // Start screen capturing.
+      this.localScreenMedia
+        .start()
+        .then(() => {
+          fm.liveswitch.Log.debug("Screen capture started.");
+
+          // Open a SFU upstream connection for screen sharing.
+          this.screenSharingUpstreamConnection = this.openSfuUpstreamConnection(
+            this.localScreenMedia
+          );
+        })
+        .fail(() => {
+          fm.liveswitch.Log.error("Screen capture could not be started.");
+        });
+
+      // Add the screen sharing media to the layout.
+      this.layoutManager.addRemoteMedia(this.localScreenMedia);
+    }
+
+    app.stopScreenSharing = function () {
+      // Close the screen sharing upstream connection.
+      this.screenSharingUpstreamConnection.close().then(() => {
+        // Stop the screen capturing and remove it from the layout.
+        this.localScreenMedia.stop();
+        this.layoutManager.removeRemoteMedia(this.localScreenMedia);
+      });
+    }
+
+
+
+    const joinBtn = document.getElementById("join-btn");
+    const leaveBtn = document.getElementById("leave-btn");
+
+    joinBtn.onclick = () => {
+      app.checkAppCredentialsSet();
+      app.startLocalMedia().then(() => {
+
+        // Create and register the client.
+        app.joinAsync().then(() => {
+          joinBtn.style.display = "none";
+          leaveBtn.style.display = "inline-block";
+        });
+      });
+    };
+
+    leaveBtn.onclick = () => {
+      app.stopLocalMedia().then(() => {
+        app.leaveAsync().then(() => {
+          joinBtn.style.display = "inline-block";
+          leaveBtn.style.display = "none";
+        });
+      });
+    };
+
+    const screenShareToggleBtn = document.getElementById("screenshare-toggle-btn");
+    screenShareToggleBtn.onclick = () => app.toggleScreenSharing();
+    app.localScreenMedia.addOnVideoStarted(() => {
+      app.localScreenMedia.getVideoTrack().addOnStopped(() => {
+        app.toggleScreenSharing();
+      });
+    });
+  </script>
+</body>
+
+</html>

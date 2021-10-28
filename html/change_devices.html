@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Change Devices</title>
+</head>
+
+<body>
+  <div>
+    <div style="float: left;">
+
+      <div style="float: left; margin-top: 5px;">
+        <div style="margin-left: 0">
+          <button type="button" id="join-btn" style="margin: 2px;">
+            Join
+          </button>
+          <button type="button" id="leave-btn" style="margin: 2px; display: none;">
+            Leave
+          </button>
+          <br />
+        </div>
+        <br />
+        <label for="audioInputs">Audio Inputs:</label>
+        <select id="audioInputs" style="margin: 2px;"> </select>
+        <br />
+        <label for="videoInputs">Video Inputs:</label>
+        <select id="videoInputs" style="margin: 2px;"> </select>
+        <br />
+        <label for="audioOutputs">Audio Outputs:</label>
+        <select id="audioOutputs" style="margin: 2px;"> </select>
+        <br />
+        <div id="my-container" style="width:800px; height:600px;"></div>
+      </div>
+    </div>
+    <div style="margin-left: 810px;">
+      <div id="text-container"
+        style="box-sizing: border-box; width: 400px; height: 600px; border: 1px solid black; padding: 5px;"></div>
+      <div style="margin-top: 5px; width: 100%;"></div>
+    </div>
+  </div>
+  <script src="./../node_modules/fm.liveswitch/fm.liveswitch.js"></script>
+  <script type="text/javascript" src='../MediaStreamingLogic.js'></script>
+  <script>
+    var app = HelloWorld.MediaStreamingLogic.getInstance();
+
+    // Switch audio input device.
+    app.getAudioInputs = function () {
+      return this.localMedia.getAudioInputs();
+    };
+
+    app.setAudioInput = function (input) {
+      this.localMedia.changeAudioSourceInput(input);
+    };
+
+    // Switch video input device.
+    app.getVideoInputs = function () {
+      return this.localMedia.getVideoInputs();
+    };
+
+    app.setVideoInput = function (input) {
+      this.localMedia.changeVideoSourceInput(input);
+    };
+
+    // Switch audio output device.
+    app.getAudioOutputs = function () {
+      const remoteMedia = new fm.liveswitch.RemoteMedia(true, true);
+      return remoteMedia.getAudioSinkOutputs();
+    }
+
+    app.setAudioOutput = function (output) {
+      // Set the audio output device for each downstream connection.
+      for (const connectionID in this.downstreamConnections) {
+        const connection = this.downstreamConnections[connectionID];
+        const remoteMedia = connection.getAudioStream().getRemoteMedia();
+        remoteMedia.changeAudioSinkOutput(output);
+      }
+    }
+
+    const joinBtn = document.getElementById('join-btn');
+    const leaveBtn = document.getElementById('leave-btn');
+
+    joinBtn.onclick = () => {
+      app.checkAppCredentialsSet();
+      app.startLocalMedia().then(() => {
+        loadInputs();
+        // Create and register the client.
+        app.joinAsync().then(() => {
+          joinBtn.style.display = "none";
+          leaveBtn.style.display = "inline-block";
+        });
+      });
+    }
+
+    leaveBtn.onclick = () => {
+      app.stopLocalMedia().then(() => {
+        app.leaveAsync().then(() => {
+          clearInputs();
+          joinBtn.style.display = "inline-block";
+          leaveBtn.style.display = "none";
+        });
+      });
+    }
+
+
+    function loadInputs() {
+      app.getAudioInputs().then(audioInputs => {
+        const selectBox = document.getElementById('audioInputs')
+        for (const input of audioInputs) {
+          const option = document.createElement('option');
+          option.text = input.getName();
+          selectBox.add(option);
+        };
+        selectBox.onchange = () =>
+          app.setAudioInput(audioInputs[selectBox.selectedIndex]);
+      });
+
+      app.getVideoInputs().then(videoInputs => {
+        const selectBox = document.getElementById('videoInputs');
+        for (const input of videoInputs) {
+          const option = document.createElement('option');
+          option.text = input.getName();
+          selectBox.add(option);
+        }
+        selectBox.onchange = () =>
+          app.setVideoInput(videoInputs[selectBox.selectedIndex]);
+      })
+
+      app.getAudioOutputs().then(audioOutputs => {
+        const selectBox = document.getElementById('audioOutputs');
+        for (const output of audioOutputs) {
+          const option = document.createElement('option');
+          option.text = output.getName();
+          selectBox.add(option);
+        }
+        selectBox.onchange = () =>
+          app.setAudioOutput(audioOutputs[selectBox.selectedIndex]);
+      })
+      // </Change Devices>
+    }
+
+    function clearInputs() {
+      // Remove the lists of available devices.
+      removeOptions(document.getElementById('audioInputs'))
+      removeOptions(document.getElementById('videoInputs'))
+      removeOptions(document.getElementById('audioOutputs'))
+    }
+
+    function removeOptions(selectElement) {
+      const length = selectElement.options.length - 1
+      for (let i = length; i >= 0; i--) {
+        selectElement.remove(i)
+      }
+    }
+  </script>
+</body>
+
+</html>

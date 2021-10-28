@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Text Chat</title>
+</head>
+
+<body>
+
+  <div>
+    <div style="float: left;">
+      <div style="float: left; margin-top: 5px;">
+        <div style="margin-left: 0">
+          <button type="button" id="join-btn" style="margin: 2px;">Join</button>
+          <button type="button" id="leave-btn" style="margin: 2px; display: none;">Leave</button>
+          <br />
+        </div>
+        <div id="my-container" style="width:800px; height:600px;"></div>
+        <br />
+      </div>
+
+    </div>
+    <div style="margin-left: 810px;">
+      <div id="text-container"
+        style="box-sizing: border-box; width: 400px; height: 600px; border: 1px solid black; padding: 5px;"></div>
+      <div style="position: relative; margin-top: 5px; width: 100%;">
+        <div style="float: left;">
+          <input type="text" id="inputbox"
+            style="box-sizing: border-box; width: 300px; height: 30px; border: 1px solid black; padding: 4px; ">
+            
+        </div> 
+        <div style="margin-left: 71%;">
+          <button type="button" id="send-message-btn"
+            style="position: absolute; width: 100px; height: 30px; vertical-align: top;">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src='./../node_modules/fm.liveswitch/fm.liveswitch.js'></script>
+  <script type="text/javascript" src='../MediaStreamingLogic.js'></script>
+  <script>
+    var app = HelloWorld.MediaStreamingLogic.getInstance();
+
+    app.openSfuUpstreamConnection = function (localMedia) {
+      // Create audio and video streams from local media.
+      const audioStream = new fm.liveswitch.AudioStream(localMedia);
+      const videoStream = new fm.liveswitch.VideoStream(localMedia);
+
+      // Create data channel and stream.
+      const dataChannelText = new fm.liveswitch.DataChannel("text-channel");
+      if (this.textChannel == null) {
+        this.textChannel = dataChannelText;
+      }
+
+      const dataStream = new fm.liveswitch.DataStream(dataChannelText);
+
+      // Create a SFU upstream connection with local audio and video.
+      const connection = this.channel.createSfuUpstreamConnection(
+        audioStream,
+        videoStream,
+        dataStream
+      );
+
+      connection.addOnStateChange((conn) => {
+        fm.liveswitch.Log.debug(
+          `Upstream connection is ${new fm.liveswitch.ConnectionStateWrapper(
+            conn.getState()
+          ).toString()}.`
+        );
+      });
+
+      connection.open();
+
+      return connection;
+    }
+
+    app.openSfuDownstreamConnection = function (remoteConnectionInfo) {
+      // Create remote media.
+      const remoteMedia = new fm.liveswitch.RemoteMedia();
+      const audioStream = new fm.liveswitch.AudioStream(remoteMedia);
+      const videoStream = new fm.liveswitch.VideoStream(remoteMedia);
+
+      // Add remote media to the layout.
+      this.layoutManager.addRemoteMedia(remoteMedia);
+
+      // Create data channel and set onReceive.
+      const dataChannelText = new fm.liveswitch.DataChannel("text-channel");
+      dataChannelText.setOnReceive((e) => this.onTextReceive(e));
+
+      // Create data stream with the data channel.
+      const dataStream = new fm.liveswitch.DataStream(dataChannelText);
+
+      // Create a SFU downstream connection with remote audio and video.
+      const connection = this.channel.createSfuDownstreamConnection(
+        remoteConnectionInfo,
+        audioStream,
+        videoStream,
+        dataStream
+      );
+
+      // Store the downstream connection.
+      this.downstreamConnections[connection.getId()] = connection;
+
+      connection.addOnStateChange((conn) => {
+        fm.liveswitch.Log.debug(
+          `Downstream connection is ${new fm.liveswitch.ConnectionStateWrapper(
+            conn.getState()
+          ).toString()}.`
+        );
+
+        // Remove the remote media from the layout and destroy it if the remote is closed.
+        if (conn.getRemoteClosed()) {
+          delete this.downstreamConnections[connection.getId()];
+          this.layoutManager.removeRemoteMedia(remoteMedia);
+          remoteMedia.destroy();
+        }
+      });
+
+      connection.open();
+      return connection;
+    }
+
+    app.textChannel = undefined;
+
+    app.sendMessage = function (msg) {
+      // Prepend user ID to the message.
+      const chatMsg = `${this.client.getUserId()}: ${msg}`;
+
+      // Display the message locally.
+      this.displayMessage(chatMsg);
+
+      // Send the message through the data channel.
+      this.textChannel.sendDataString(chatMsg);
+    }
+
+    app.onTextReceive = function (dataChannelReceiveArgs) {
+      this.displayMessage(dataChannelReceiveArgs.getDataString());
+    }
+
+    const joinBtn = document.getElementById("join-btn");
+    const leaveBtn = document.getElementById("leave-btn");
+
+    joinBtn.onclick = () => {
+      app.checkAppCredentialsSet();
+      app.startLocalMedia().then(() => {
+
+        // Create and register the client.
+        app.joinAsync().then(() => {
+          joinBtn.style.display = "none";
+          leaveBtn.style.display = "inline-block";
+        });
+      });
+    };
+
+    leaveBtn.onclick = () => {
+      app.stopLocalMedia().then(() => {
+        app.leaveAsync().then(() => {
+          joinBtn.style.display = "inline-block";
+          leaveBtn.style.display = "none";
+        });
+      });
+    };
+
+    const sendMessageBtn = document.getElementById("send-message-btn");
+
+    sendMessageBtn.onclick = () => {
+      const inputbox = document.getElementById("inputbox");
+      const msg = inputbox.value;
+      if (msg != null && msg.length > 0) {
+        inputbox.value = "";
+        app.sendMessage(msg);
+      }
+    };
+  </script>
+
+</body>
+
+</html>

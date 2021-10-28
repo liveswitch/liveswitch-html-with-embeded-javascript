@@ -1,0 +1,15 @@
+{
+  "name": "jsinhtml",
+  "version": "1.0.0",
+  "description": "This repository includes HTML with embedded JavaScript examples that demonstrates how to do the following:",
+  "main": "config.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "fm.liveswitch": "^1.13.1-54330"
+  }
+}

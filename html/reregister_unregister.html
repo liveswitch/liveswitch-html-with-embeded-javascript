@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Re-register and Unregister</title>
+</head>
+
+<body>
+
+  <div>
+    <div style="float: left;">
+
+      <div style="float: left; margin-top: 5px;">
+        <div style="margin-left: 0">
+          <button type="button" id="join-btn" style="margin: 2px;">Join</button>
+          <button type="button" id="leave-btn" style="margin: 2px; display: none;">Leave</button>
+          <br />
+        </div>
+        <br />
+        <div id="my-container" style="width:800px; height:600px;"></div>
+      </div>
+
+    </div>
+    <div style="margin-left: 810px;">
+      <div id="text-container"
+        style="box-sizing: border-box; width: 400px; height: 600px; border: 1px solid black; padding: 5px;"></div>
+    </div>
+  </div>
+  <script src='./../node_modules/fm.liveswitch/fm.liveswitch.js'></script>
+  <script type="text/javascript" src='../MediaStreamingLogic.js'></script>
+  <script>
+    var app = HelloWorld.MediaStreamingLogic.getInstance();
+
+    const joinBtn = document.getElementById("join-btn");
+    const leaveBtn = document.getElementById("leave-btn");
+
+    joinBtn.onclick = () => {
+      app.checkAppCredentialsSet();
+      app.startLocalMedia().then(() => {
+
+        // Create and register the client.
+        app.joinAsync().then(() => {
+          joinBtn.style.display = "none";
+          leaveBtn.style.display = "inline-block";
+        });
+      });
+    };
+
+    leaveBtn.onclick = () => {
+      app.stopLocalMedia().then(() => {
+        app.leaveAsync().then(() => {
+          joinBtn.style.display = "inline-block";
+          leaveBtn.style.display = "none";
+        });
+      });
+    };
+  </script>
+
+</body>
+
+</html>

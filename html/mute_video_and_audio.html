@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Mute Video and Audio</title>
+</head>
+
+<body>
+
+  <div>
+    <div style="float: left;">
+
+      <div style="float: left; margin-top: 5px; margin-bottom: 20px">
+        <div style="margin-left: 0">
+          <button type="button" id="join-btn" style="margin: 2px;">Join</button>
+          <button type="button" id="leave-btn" style="margin: 2px; display: none;">Leave</button>
+        </div>
+        <br />
+        <button type="button" id="mute-audio-btn" style="margin: 2px; margin-top: 10px;">Mute Audio</button>
+        <button type="button" id="disable-remote-audio-btn" style="margin: 2px;">Disable Remote Audio</button>
+        <br />
+        <button type="button" id="mute-video-btn" style="margin: 2px;">Mute Video</button>
+        <button type="button" id="disable-remote-video-btn" style="margin: 2px;">Disable Remote Video</button>
+        <div id="my-container" style="width:800px; height:600px;"></div>
+      </div>
+
+
+    </div>
+    <div style="margin-left: 810px;">
+      <div id="text-container"
+        style="box-sizing: border-box; width: 400px; height: 600px; border: 1px solid black; padding: 5px;"></div>
+    </div>
+  </div>
+  <script src='./../node_modules/fm.liveswitch/fm.liveswitch.js'></script>
+  <script type="text/javascript" src='../MediaStreamingLogic.js'></script>
+  <script>
+    var app = HelloWorld.MediaStreamingLogic.getInstance();
+
+    app.toggleMuteLocalAudio = function () {
+      // Retrieve and update the config of the upstream connection.
+      const config = this.upstreamConnection.getConfig();
+      config.setLocalAudioMuted(!config.getLocalAudioMuted());
+      return this.upstreamConnection.update(config);
+    };
+
+    app.toggleMuteLocalVideo = function () {
+      // Retrieve and update the config of the upstream connection.
+      const config = this.upstreamConnection.getConfig();
+      config.setLocalVideoMuted(!config.getLocalVideoMuted());
+      return this.upstreamConnection.update(config);
+    };
+
+    app.toggleDisableRemoteAudio = function () {
+      // Retrieve and update the config of each of the downstream connections.
+      for (const id in this.downstreamConnections) {
+        const connection = this.downstreamConnections[id];
+        const config = connection.getConfig();
+        config.setRemoteAudioDisabled(!config.getRemoteAudioDisabled());
+        connection.update(config);
+      }
+    };
+
+    app.toggleDisableRemoteVideo = function () {
+      // Retrieve and update the config of each of the downstream connections.
+      for (const id in this.downstreamConnections) {
+        const connection = this.downstreamConnections[id];
+        const config = connection.getConfig();
+        config.setRemoteVideoDisabled(!config.getRemoteVideoDisabled());
+        connection.update(config);
+      }
+    };
+
+    const joinBtn = document.getElementById("join-btn");
+    const leaveBtn = document.getElementById("leave-btn");
+
+    joinBtn.onclick = () => {
+      app.checkAppCredentialsSet();
+      app.startLocalMedia().then(() => {
+        // Create and register the client.
+        app.joinAsync().then(() => {
+          joinBtn.style.display = "none";
+          leaveBtn.style.display = "inline-block";
+        });
+      });
+    };
+
+    leaveBtn.onclick = () => {
+      app.stopLocalMedia().then(() => {
+        app.leaveAsync().then(() => {
+          joinBtn.style.display = "inline-block";
+          leaveBtn.style.display = "none";
+        });
+      });
+    };
+
+
+
+    const muteAudioBtn = document.getElementById("mute-audio-btn");
+    const muteVideoBtn = document.getElementById("mute-video-btn");
+
+    muteAudioBtn.onclick = () => {
+      app.toggleMuteLocalAudio().then(() => {
+        muteAudioBtn.innerText = app.localMedia.getAudioMuted() ?
+          "Unmute Audio" :
+          "Mute Audio";
+      });
+    };
+
+    muteVideoBtn.onclick = () => {
+      app.toggleMuteLocalVideo().then(() => {
+        muteVideoBtn.innerText = app.localMedia.getVideoMuted() ?
+          "Unmute Video" :
+          "Mute Video";
+      });
+    };
+
+    const disableRemoteAudioBtn = document.getElementById(
+      "disable-remote-audio-btn"
+    );
+    const disableRemoteVideoBtn = document.getElementById(
+      "disable-remote-video-btn"
+    );
+
+    disableRemoteAudioBtn.onclick = () => {
+      app.toggleDisableRemoteAudio();
+      disableRemoteAudioBtn.innerText =
+        disableRemoteAudioBtn.innerText.indexOf("Disable") !== -1 ?
+          "Enable Remote Audio" :
+          "Disable Remote Audio";
+    };
+
+    disableRemoteVideoBtn.onclick = () => {
+      app.toggleDisableRemoteVideo();
+      disableRemoteVideoBtn.innerText =
+        disableRemoteVideoBtn.innerText.indexOf("Disable") !== -1 ?
+          "Enable Remote Video" :
+          "Disable Remote Video";
+    };
+  </script>
+
+</body>
+
+</html>

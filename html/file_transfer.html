@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>File Transfer</title>
+</head>
+
+<body>
+  <div>
+    <div style="float: left;">
+      <div style="float: left; margin-top: 5px;">
+        <div style="margin-left: 0">
+          <button type="button" id="join-btn" style="margin: 2px;">Join</button>
+          <button type="button" id="leave-btn" style="margin: 2px; display: none;">Leave</button>
+          <br />
+        </div>
+        <div id="my-container" style="width:800px; height:600px;"></div>
+        <br />
+      </div>
+
+    </div>
+    <div style="margin-left: 810px;">
+      <div id="text-container"
+        style="box-sizing: border-box; width: 400px; height: 600px; border: 1px solid black; padding: 5px;"></div>
+      <div style="margin-top: 5px; width: 100%;">
+        <button type="button" id="upload-file-btn" style="width: 400px; height: 30px;">📎</button>
+        <input type="file" id="fileId" style="display:none">
+      </div>
+    </div>
+  </div>
+
+  <script src='./../node_modules/fm.liveswitch/fm.liveswitch.js'></script>
+  <script type="text/javascript" src='../MediaStreamingLogic.js'></script>
+  <script>
+    var app = HelloWorld.MediaStreamingLogic.getInstance();
+
+    app.saveFile = function (fileName, data) {
+      // Prompt the user to download the file.
+      if (
+        confirm(
+          `You've received a file from this channel, do you wish to download ${fileName}?`
+        ) === true
+      ) {
+        const file = new Blob([data]);
+        if (window.navigator.msSaveOrOpenBlob) {
+          // For IE.
+          window.navigator.msSaveOrOpenBlob(file, fileName);
+        } else {
+          // For other browsers.
+          const a = document.createElement("a");
+          const url = URL.createObjectURL(file);
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+          }, 0);
+        }
+      }
+    }
+
+    fileChannel: undefined,
+
+      app.sendFile = function (fileName, file) {
+        // Convert the file name to a byte array.
+        const fileNameBytes = DataBytesConverter.toDataBytes(fileName);
+
+        // Convert the file name byte array's length to a byte array.
+        const fileNameBytesLength = DataBytesConverter.intToDataBytes(
+          fileNameBytes.length
+        );
+
+        // Wrap the file into a data buffer.
+        const dataBuffer = fm.liveswitch.DataBuffer.wrap(file);
+
+        // Prepend the byte arrays to the data buffer.
+        dataBuffer.prepend(fm.liveswitch.DataBuffer.wrap(fileNameBytes));
+        dataBuffer.prepend(fm.liveswitch.DataBuffer.wrap(fileNameBytesLength));
+
+        // Send the data buffer through the data channel.
+        this.fileChannel.sendDataBytes(dataBuffer);
+      }
+
+    app.onFileReceive = function (dataChannelReceiveArgs) {
+      // Retrieve the data buffer.
+      const dataBuffer = dataChannelReceiveArgs.getDataBytes();
+
+      // Get the offset to the actual data.
+      const dataOffset = dataBuffer.getIndex();
+
+      // Get the file name byte array's length and retrieve the file name.
+      const fileNameBytesLength = DataBytesConverter.toInt(
+        dataBuffer.getData().slice(dataOffset)
+      );
+      const fileName = DataBytesConverter.toString(
+        dataBuffer
+          .getData()
+          .slice(dataOffset + 4, dataOffset + 4 + fileNameBytesLength)
+      );
+
+      // Get the offset to the file's data and the file size.
+      const fileOffset = dataOffset + 4 + fileNameBytesLength;
+      const fileSize = dataBuffer.getLength() - 4 - fileNameBytesLength;
+
+      // Retrieve the file's data using the offset and the file's size.
+      const dataBytes = dataBuffer
+        .getData()
+        .slice(fileOffset, fileOffset + fileSize);
+
+      // Save the file.
+      this.saveFile(fileName, dataBytes);
+    }
+
+    app.openSfuUpstreamConnection = function (localMedia) {
+      // Create audio and video streams from local media.
+      const audioStream = new fm.liveswitch.AudioStream(localMedia);
+      const videoStream = new fm.liveswitch.VideoStream(localMedia);
+
+      const dataChannelFile = new fm.liveswitch.DataChannel("file-channel");
+      if (this.fileChannel == null) {
+        this.fileChannel = dataChannelFile;
+      }
+
+      const dataStream = new fm.liveswitch.DataStream(dataChannelFile);
+
+      // Create a SFU upstream connection with local audio and video.
+      const connection = this.channel.createSfuUpstreamConnection(
+        audioStream,
+        videoStream,
+        dataStream
+      );
+
+      connection.addOnStateChange((conn) => {
+        fm.liveswitch.Log.debug(
+          `Upstream connection is ${new fm.liveswitch.ConnectionStateWrapper(
+            conn.getState()
+          ).toString()}.`
+        );
+      });
+
+      connection.open();
+
+      return connection;
+    }
+
+    app.openSfuDownstreamConnection = function (remoteConnectionInfo) {
+      // Create remote media.
+      const remoteMedia = new fm.liveswitch.RemoteMedia();
+      const audioStream = new fm.liveswitch.AudioStream(remoteMedia);
+      const videoStream = new fm.liveswitch.VideoStream(remoteMedia);
+
+      // Add remote media to the layout.
+      this.layoutManager.addRemoteMedia(remoteMedia);
+
+      const dataChannelFile = new fm.liveswitch.DataChannel("file-channel");
+      dataChannelFile.setOnReceive((e) => this.onFileReceive(e));
+
+      // Create data stream with the data channel.
+      const dataStream = new fm.liveswitch.DataStream(dataChannelFile);
+
+      // Create a SFU downstream connection with remote audio and video.
+      const connection = this.channel.createSfuDownstreamConnection(
+        remoteConnectionInfo,
+        audioStream,
+        videoStream,
+        dataStream
+      );
+
+      // Store the downstream connection.
+      this.downstreamConnections[connection.getId()] = connection;
+
+      connection.addOnStateChange((conn) => {
+        fm.liveswitch.Log.debug(
+          `Downstream connection is ${new fm.liveswitch.ConnectionStateWrapper(
+            conn.getState()
+          ).toString()}.`
+        );
+
+        // Remove the remote media from the layout and destroy it if the remote is closed.
+        if (conn.getRemoteClosed()) {
+          delete this.downstreamConnections[connection.getId()];
+          this.layoutManager.removeRemoteMedia(remoteMedia);
+          remoteMedia.destroy();
+        }
+      });
+
+      connection.open();
+      return connection;
+    }
+
+    const DataBytesConverter = {
+      /**
+       * Convert a string into Uint8Array
+       */
+      toDataBytes: function (str) {
+        return new TextEncoder().encode(str);
+      },
+
+      /**
+       * Convert an int into Uint8Array
+       */
+      intToDataBytes: function (x) {
+        return new Uint8Array([
+          (x & 0xff000000) >> 24,
+          (x & 0x00ff0000) >> 16,
+          (x & 0x0000ff00) >> 8,
+          x & 0x000000ff
+        ]);
+      },
+
+      /**
+       * Convert Uint8Array into int
+       */
+      toInt: function (dataBytes) {
+        return new DataView(dataBytes.buffer).getUint32(0);
+      },
+
+      /**
+       * Convert Uint8Array into string
+       */
+      toString: function (dataBytes) {
+        return new TextDecoder().decode(dataBytes);
+      }
+    };
+
+    const joinBtn = document.getElementById("join-btn");
+    const leaveBtn = document.getElementById("leave-btn");
+
+    joinBtn.onclick = () => {
+      app.checkAppCredentialsSet();
+      app.startLocalMedia().then(() => {
+
+        // Create and register the client.
+        app.joinAsync().then(() => {
+          joinBtn.style.display = "none";
+          leaveBtn.style.display = "inline-block";
+        });
+      });
+    };
+
+    leaveBtn.onclick = () => {
+      app.stopLocalMedia().then(() => {
+        app.leaveAsync().then(() => {
+          joinBtn.style.display = "inline-block";
+          leaveBtn.style.display = "none";
+        });
+      });
+    };
+
+    const uploadFileBtn = document.getElementById("upload-file-btn");
+    const fileInput = document.getElementById("fileId");
+
+    uploadFileBtn.onclick = () => fileInput.click();
+
+    fileInput.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) {
+        return;
+      }
+
+      // Read the file to an array buffer and send it through the data channel.
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const contents = new Uint8Array(e.target.result);
+        app.sendFile(file.name, contents);
+        alert(`You've sent ${file.name} to the channel!`);
+      };
+      reader.readAsArrayBuffer(file);
+    };
+  </script>
+
+</body>
+
+</html>

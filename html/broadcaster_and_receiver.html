@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title> Broadcaster and Receiver</title>
+</head>
+
+<body>
+  <div>
+    <div style="float: left;">
+      <div style="float: left; margin-top: 5px;">
+        <div style="margin-left: 0">
+          <button type="button" id="broadcast-btn" style="margin: 2px;">Broadcast</button>
+          <button type="button" id="receive-btn" style="margin: 2px;">Receive</button>
+          <br />
+        </div>
+        <div id="my-container" style="width:800px; height:600px;"></div>
+        <br />
+      </div>
+
+    </div>
+    <div style="margin-left: 810px;">
+      <div id="text-container"
+        style="box-sizing: border-box; width: 400px; height: 600px; border: 1px solid black; padding: 5px;"></div>
+    </div>
+  </div>
+  <script src='./../node_modules/fm.liveswitch/fm.liveswitch.js'></script>
+  <script type="text/javascript" src='../MediaStreamingLogic.js'></script>
+  <script>
+    let app = HelloWorld.MediaStreamingLogic.getInstance();
+
+    // <broadcast>
+    const broadcastBtn = document.getElementById("broadcast-btn");
+    const receiveBtn = document.getElementById("receive-btn");
+
+    broadcastBtn.onclick = () => {
+      app.checkAppCredentialsSet();
+      startAs(new Broadcaster());
+    }
+    receiveBtn.onclick = () => {
+      app.checkAppCredentialsSet();
+      startAs(new Receiver());
+    }
+
+    function startAs(participant) {
+
+      // Start capturing local media (broadcaster only).
+      participant.start().then(() => {
+        // Register and establish connection.
+        participant.joinAsync().then(() => {
+          broadcastBtn.disabled = true;
+          receiveBtn.disabled = true;
+        });
+      });
+    }
+    // </broadcast>
+
+    class Participant {
+      // Media Id, which will be used by both the broadcaster and receivers.
+      mediaId = "your-media-id";
+
+      // Layout manager
+      layoutManager = new fm.liveswitch.DomLayoutManager(
+        document.getElementById("my-container")
+      );
+
+      // Fields
+      client = undefined;
+      channel = undefined;
+
+      constructor() { }
+
+      joinAsync() {
+        const promise = new fm.liveswitch.Promise();
+
+        // Create the client.
+        this.client = new fm.liveswitch.Client(app.gatewayUrl, app.applicationId);
+
+        // Write registration state to log.
+        this.client.addOnStateChange(() =>
+          fm.liveswitch.Log.debug(
+            `Client is ${new fm.liveswitch.ClientStateWrapper(
+              this.client.getState()
+            )}.`
+          )
+        );
+
+        // Generate a token (do this on the server to avoid exposing your shared secret).
+        const token = fm.liveswitch.Token.generateClientRegisterToken(
+          app.applicationId,
+          this.client.getUserId(),
+          this.client.getDeviceId(),
+          this.client.getId(),
+          null,
+          [new fm.liveswitch.ChannelClaim(app.channelId)],
+          app.sharedSecret
+        );
+
+        // Register client with token.
+        this.client
+          .register(token)
+          .then((channels) => {
+            // Store our channel reference.
+            this.channel = channels[0];
+
+            fm.liveswitch.Log.info(
+              `Client ${this.client.getId()} has successfully connected to channel ${this.channel.getId()}, Hello World!`
+            );
+            app.displayMessage(
+              `Client ${this.client.getId()} has successfully connected to channel ${this.channel.getId()}, Hello World!`
+            );
+
+            this.establishConnection();
+            promise.resolve(null);
+          })
+          .fail((ex) => {
+            fm.liveswitch.Log.error("Failed to register with Gateway.");
+            promise.reject(ex);
+          });
+
+        return promise;
+      }
+
+      // Abstract methods
+      establishConnection() { }
+      start() { }
+      stop() { }
+    }
+
+    class Broadcaster extends Participant {
+      localMedia = undefined;
+
+      establishConnection() {
+        // Create a SFU upstream connection with local audio and video and the presentation ID.
+        const audioStream = new fm.liveswitch.AudioStream(this.localMedia);
+        const videoStream = new fm.liveswitch.VideoStream(this.localMedia);
+        const connection = this.channel.createSfuUpstreamConnection(
+          audioStream,
+          videoStream,
+          this.mediaId
+        );
+
+        connection.open();
+      }
+
+      start() {
+        const promise = new fm.liveswitch.Promise();
+
+        // Create local media with audio and video enabled.
+        const audioEnabled = true;
+        const videoEnabled = true;
+        this.localMedia = new fm.liveswitch.LocalMedia(audioEnabled, videoEnabled);
+
+        // Set local media in the layout.
+        this.layoutManager.setLocalMedia(this.localMedia);
+
+        // Start local media capturing.
+        this.localMedia
+          .start()
+          .then(() => {
+            fm.liveswitch.Log.debug("Media capture started.");
+            promise.resolve(null);
+          })
+          .fail((ex) => {
+            fm.liveswitch.Log.error(ex.message);
+            promise.reject(ex);
+          });
+
+        return promise;
+      }
+
+      stop() {
+        const promise = new fm.liveswitch.Promise();
+
+        // Stop local media capturing.
+        this.localMedia
+          .stop()
+          .then(() => {
+            fm.liveswitch.Log.debug("Media capture stopped.");
+            promise.resolve(null);
+          })
+          .fail((ex) => {
+            fm.liveswitch.Log.error(ex.message);
+            promise.reject(ex);
+          });
+
+        return promise;
+      }
+    }
+
+    class Receiver extends Participant {
+      remoteMedia = undefined;
+
+      establishConnection() {
+        // Create remote media.
+        this.remoteMedia = new fm.liveswitch.RemoteMedia();
+        const audioStream = new fm.liveswitch.AudioStream(this.remoteMedia);
+        const videoStream = new fm.liveswitch.VideoStream(this.remoteMedia);
+
+        // Add remote media to the layout.
+        this.layoutManager.addRemoteMedia(this.remoteMedia);
+
+        // Create a SFU downstream connection with remote audio and video and the presentation ID.
+        const connection = this.channel.createSfuDownstreamConnection(
+          this.mediaId,
+          audioStream,
+          videoStream
+        );
+
+        connection.addOnStateChange((conn) => {
+          // Remove the remote media from the layout if the remote is closed.
+          if (conn.getRemoteClosed()) {
+            this.layoutManager.removeRemoteMedia(this.remoteMedia);
+          }
+        });
+
+        connection.open();
+      }
+
+      // Not needed because receiver only receives media from the broadcaster.
+      start() {
+        return fm.liveswitch.Promise.resolveNow();
+      }
+
+      // Not needed because receiver only receives media from the broadcaster.
+      stop() {
+        return fm.liveswitch.Promise.resolveNow();
+      }
+    }
+  </script>
+</body>
+
+</html>
